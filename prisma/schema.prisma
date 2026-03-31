@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String
+  passwordHash String
+  timezone    String   @default("Asia/Seoul")
+  createdAt   DateTime @default(now())
+
+  workoutLogs WorkoutLog[]
+  streak      Streak?
+  schedule    WorkoutSchedule?
+  pushTokens  PushToken[]
+  following   Follow[] @relation("follower")
+  followers   Follow[] @relation("followee")
+  reactions   Reaction[]
+}
+
+model WorkoutSchedule {
+  id          String  @id @default(uuid())
+  userId      String  @unique
+  daysOfWeek  String  // JSON array e.g. "[1,2,3,4,5]"
+  timeLocal   String  // "06:30"
+  enabled     Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WorkoutLog {
+  id          String   @id @default(uuid())
+  userId      String
+  localDate   String   // "YYYY-MM-DD" — 사용자 타임존 기준
+  loggedAt    DateTime @default(now())
+  note        String?
+  photoUrl    String?
+  gpsVerified Boolean  @default(false)
+  visibility  String   @default("friends") // public | friends | private
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reactions Reaction[]
+
+  @@unique([userId, localDate]) // 하루 1회 제한 (DB 레벨 보장)
+  @@index([userId, localDate])
+}
+
+model Streak {
+  userId        String   @id
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  lastLogDate   String?  // "YYYY-MM-DD"
+  updatedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Follow {
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  follower User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee User @relation("followee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followeeId])
+}
+
+model Reaction {
+  id        String   @id @default(uuid())
+  logId     String
+  userId    String
+  type      String   @default("like") // like | fire | strong
+  createdAt DateTime @default(now())
+
+  log  WorkoutLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([logId, userId])
+}
+
+model PushToken {
+  userId    String
+  token     String
+  platform  String   // ios | android
+  updatedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, token])
+}
