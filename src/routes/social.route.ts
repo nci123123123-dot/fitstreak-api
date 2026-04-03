@@ -398,8 +398,9 @@ export async function socialRoutes(
         where:  { userId: { in: allIds } },
         select: { userId: true, currentStreak: true, longestStreak: true, lastLogDate: true },
       }),
+      // KST 기준 오늘 날짜로 오늘 운동 여부 조회
       prisma.workoutLog.findMany({
-        where:  { userId: { in: allIds }, localDate: { gte: new Date().toISOString().slice(0, 10) } },
+        where:  { userId: { in: allIds }, localDate: getTodayInTimezone('Asia/Seoul') },
         select: { userId: true },
       }),
     ]);
