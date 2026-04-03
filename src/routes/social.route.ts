@@ -119,7 +119,7 @@ export async function socialRoutes(
     const results = await prisma.user.findMany({
       where: {
         id:  { not: userId },
-        displayName: { contains: q },
+        displayName: { contains: q, mode: 'insensitive' },
       },
       select: { id: true, displayName: true, profilePhoto: true },
       take: 20,
