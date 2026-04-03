@@ -49,6 +49,20 @@ export async function socialRoutes(
       update: {},
     });
 
+    // 팔로우 알림 전송
+    const [me, targetTokens] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
+      prisma.pushToken.findMany({ where: { userId: targetId }, select: { token: true } }),
+    ]);
+    if (me && targetTokens.length > 0) {
+      sendExpoPush(
+        targetTokens.map(t => t.token),
+        '새 팔로워',
+        `${me.displayName}님이 팔로우했어요!`,
+        { type: 'follow', fromUserId: userId },
+      );
+    }
+
     return reply.code(201).send({ message: `Now following ${target.displayName}.` });
   });
 
