@@ -1,8 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
-import { PrismaLibSQL } from '@prisma/adapter-libsql';
-import { createClient } from '@libsql/client';
 import fp from 'fastify-plugin';
 
 import authPlugin   from './plugins/auth.plugin';
@@ -22,17 +20,7 @@ export async function buildApp() {
     },
   });
 
-  // Turso(클라우드)일 때는 libSQL 어댑터 사용, 로컬 개발은 일반 SQLite
-  const prisma = process.env.DATABASE_AUTH_TOKEN
-    ? new PrismaClient({
-        adapter: new PrismaLibSQL(
-          createClient({
-            url:       process.env.DATABASE_URL!,
-            authToken: process.env.DATABASE_AUTH_TOKEN,
-          }),
-        ),
-      })
-    : new PrismaClient();
+  const prisma = new PrismaClient();
   const streakService = new StreakService(prisma);
 
   // Graceful shutdown
