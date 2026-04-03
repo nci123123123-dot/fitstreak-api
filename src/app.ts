@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
+import { PrismaLibSQL } from '@prisma/adapter-libsql';
+import { createClient } from '@libsql/client';
 import fp from 'fastify-plugin';
 
 import authPlugin   from './plugins/auth.plugin';
@@ -8,6 +10,7 @@ import { StreakService }  from './services/streak.service';
 import { authRoutes }    from './routes/auth.route';
 import { workoutRoutes } from './routes/workout.route';
 import { socialRoutes }  from './routes/social.route';
+import { placesRoutes }  from './routes/places.route';
 
 export async function buildApp() {
   const app = Fastify({
@@ -19,7 +22,17 @@ export async function buildApp() {
     },
   });
 
-  const prisma = new PrismaClient();
+  // Turso(클라우드)일 때는 libSQL 어댑터 사용, 로컬 개발은 일반 SQLite
+  const prisma = process.env.DATABASE_AUTH_TOKEN
+    ? new PrismaClient({
+        adapter: new PrismaLibSQL(
+          createClient({
+            url:       process.env.DATABASE_URL!,
+            authToken: process.env.DATABASE_AUTH_TOKEN,
+          }),
+        ),
+      })
+    : new PrismaClient();
   const streakService = new StreakService(prisma);
 
   // Graceful shutdown
@@ -43,6 +56,7 @@ export async function buildApp() {
     await authRoutes(instance, { prisma });
     await workoutRoutes(instance, { prisma, streakService });
     await socialRoutes(instance, { prisma });
+    await placesRoutes(instance);
   }));
 
   return app;

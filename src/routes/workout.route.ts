@@ -17,7 +17,7 @@ export async function workoutRoutes(
       body: {
         type: 'object',
         properties: {
-          note:        { type: 'string', maxLength: 280 },
+          note:        { type: 'string' },
           photoUrl:    { type: 'string' },
           gpsVerified: { type: 'boolean' },
           localDate:   { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
@@ -86,6 +86,62 @@ export async function workoutRoutes(
     return reply.send({ logs, total, page, limit, totalPages: Math.ceil(total / limit) });
   });
 
+  // PUT /workouts/:logId — 내 운동 기록 수정
+  app.put<{
+    Params: { logId: string };
+    Body:   { note?: string; visibility?: string; photoUrl?: string };
+  }>('/workouts/:logId', {
+    onRequest: [app.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          note:       { type: 'string', maxLength: 2000 },
+          visibility: { type: 'string', enum: ['public', 'friends', 'private'] },
+          photoUrl:   { type: 'string' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const { userId } = req.user;
+    const { logId }  = req.params;
+
+    const log = await prisma.workoutLog.findUnique({ where: { id: logId } });
+    if (!log)              return reply.code(404).send({ error: 'Not found.' });
+    if (log.userId !== userId) return reply.code(403).send({ error: 'Forbidden.' });
+
+    const updated = await prisma.workoutLog.update({
+      where: { id: logId },
+      data:  {
+        ...(req.body.note       !== undefined && { note:       req.body.note }),
+        ...(req.body.visibility !== undefined && { visibility: req.body.visibility }),
+        ...(req.body.photoUrl   !== undefined && { photoUrl:   req.body.photoUrl }),
+      },
+    });
+    return reply.send({ log: updated });
+  });
+
+  // GET /workouts/calendar?year=YYYY&month=MM
+  app.get<{
+    Querystring: { year?: string; month?: string };
+  }>('/workouts/calendar', {
+    onRequest: [app.authenticate],
+  }, async (req, reply) => {
+    const { userId } = req.user;
+    const year  = parseInt(req.query.year  ?? String(new Date().getFullYear()));
+    const month = parseInt(req.query.month ?? String(new Date().getMonth() + 1));
+    const pad   = (n: number) => String(n).padStart(2, '0');
+    const start = `${year}-${pad(month)}-01`;
+    const end   = `${year}-${pad(month)}-31`;
+
+    const logs = await prisma.workoutLog.findMany({
+      where:   { userId, localDate: { gte: start, lte: end } },
+      select:  { id: true, localDate: true, photoUrl: true, note: true, gpsVerified: true },
+      orderBy: { localDate: 'asc' },
+    });
+    return reply.send({ logs });
+  });
+
   // GET /workouts/streak — 내 streak 조회
   app.get('/workouts/streak', {
     onRequest: [app.authenticate],
@@ -119,19 +175,44 @@ export async function workoutRoutes(
     });
     const ids = [userId, ...followingIds.map((f) => f.followeeId)];
 
-    const logs = await prisma.workoutLog.findMany({
+    // 요청한 유저의 timezone 기준 오늘 날짜
+    const me = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+    const today = getTodayInTimezone(me?.timezone ?? 'Asia/Seoul');
+
+    const followingOnlyIds = followingIds.map((f) => f.followeeId);
+
+    // 오늘 기록만 조회
+    const allLogs = await prisma.workoutLog.findMany({
       where: {
-        userId:     { in: ids },
-        visibility: { in: ['public', 'friends'] },
-        ...(cursor ? { loggedAt: { lt: new Date(cursor) } } : {}),
+        AND: [
+          { localDate: today },
+          {
+            OR: [
+              // 내 기록: visibility 무관, 항상 표시
+              { userId },
+              // 친구 기록: public 또는 friends만
+              { userId: { in: followingOnlyIds }, visibility: { in: ['public', 'friends'] } },
+            ],
+          },
+          ...(cursor ? [{ loggedAt: { lt: new Date(cursor) } }] : []),
+        ],
       },
       orderBy: { loggedAt: 'desc' },
-      take:    limit,
+      take:    limit * 3, // 중복 제거 후 limit 개수 확보를 위해 여유롭게 조회
       include: {
         user:      { select: { id: true, displayName: true } },
         reactions: { select: { type: true, userId: true } },
       },
     });
+
+    // 유저+날짜 기준 중복 제거 (같은 날 여러 번 기록해도 1개만)
+    const seen = new Set<string>();
+    const logs = allLogs.filter((log) => {
+      const key = `${log.userId}_${log.localDate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, limit);
 
     const nextCursor = logs.length === limit
       ? logs[logs.length - 1].loggedAt.toISOString()

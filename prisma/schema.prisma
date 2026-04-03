@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -14,14 +15,34 @@ model User {
   passwordHash String
   timezone    String   @default("Asia/Seoul")
   createdAt   DateTime @default(now())
+  gymName          String?
+  gymLat           Float?
+  gymLng           Float?
+  defaultVisibility String @default("friends") // public | friends | private
+  profilePhoto     String? // base64 프로필 사진
 
-  workoutLogs WorkoutLog[]
-  streak      Streak?
-  schedule    WorkoutSchedule?
-  pushTokens  PushToken[]
-  following   Follow[] @relation("follower")
-  followers   Follow[] @relation("followee")
-  reactions   Reaction[]
+  workoutLogs   WorkoutLog[]
+  streak        Streak?
+  schedule      WorkoutSchedule?
+  pushTokens    PushToken[]
+  following     Follow[] @relation("follower")
+  followers     Follow[] @relation("followee")
+  reactions     Reaction[]
+  nudgesSent    NudgeLog[] @relation("nudgeSender")
+  nudgesReceived NudgeLog[] @relation("nudgeReceiver")
+}
+
+model NudgeLog {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  sentDate   String   // "YYYY-MM-DD" sender timezone 기준
+  sentAt     DateTime @default(now())
+
+  sender   User @relation("nudgeSender",   fields: [senderId],   references: [id], onDelete: Cascade)
+  receiver User @relation("nudgeReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, sentDate])
 }
 
 model WorkoutSchedule {
