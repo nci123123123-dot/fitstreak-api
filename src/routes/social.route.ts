@@ -296,12 +296,28 @@ export async function socialRoutes(
   app.get<{ Params: { userId: string } }>('/users/:userId/followers', {
     onRequest: [app.authenticate],
   }, async (req, reply) => {
+    const { userId: meId } = req.user;
     const { userId } = req.params;
-    const rows = await prisma.follow.findMany({
-      where:  { followeeId: userId },
-      select: { follower: { select: { id: true, displayName: true } } },
+
+    const [rows, myFollowing] = await Promise.all([
+      prisma.follow.findMany({
+        where:  { followeeId: userId },
+        select: { follower: { select: { id: true, displayName: true } } },
+      }),
+      // 내가 팔로우 중인 사용자 ID 집합
+      prisma.follow.findMany({
+        where:  { followerId: meId },
+        select: { followeeId: true },
+      }),
+    ]);
+
+    const followingSet = new Set(myFollowing.map((f) => f.followeeId));
+    return reply.send({
+      users: rows.map((r) => ({
+        ...r.follower,
+        isFollowing: followingSet.has(r.follower.id),
+      })),
     });
-    return reply.send({ users: rows.map((r) => r.follower) });
   });
 
   // GET /users/:userId/following
@@ -313,7 +329,8 @@ export async function socialRoutes(
       where:  { followerId: userId },
       select: { followee: { select: { id: true, displayName: true } } },
     });
-    return reply.send({ users: rows.map((r) => r.followee) });
+    // 팔로잉 목록은 모두 내가 팔로우 중인 상태
+    return reply.send({ users: rows.map((r) => ({ ...r.followee, isFollowing: true })) });
   });
 
   // GET /users/:userId/profile
