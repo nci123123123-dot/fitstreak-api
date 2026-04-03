@@ -29,7 +29,7 @@
     "@fastify/jwt": "^10.0.0",
     "@fastify/multipart": "^9.4.0",
     "@libsql/client": "^0.17.2",
-    "@prisma/adapter-libsql": "^7.6.0",
+    "@prisma/adapter-libsql": "^5.22.0",
     "@prisma/client": "^5.22.0",
     "fastify": "^5.8.4",
     "fastify-plugin": "^5.1.0",
