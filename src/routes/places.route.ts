@@ -60,7 +60,7 @@ html,body,#map{width:100%;height:100%}
 <script>
 var map,myOverlay,circle;
 var gymPos=new kakao.maps.LatLng(${parseFloat(gymLat)},${parseFloat(gymLng)});
-map=new kakao.maps.Map(document.getElementById('map'),{center:gymPos,level:3});
+map=new kakao.maps.Map(document.getElementById('map'),{center:gymPos,level:2});
 new kakao.maps.Marker({position:gymPos,map:map});
 var lbl='<div style="background:#fff;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;color:#333;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:4px">${name}</div>';
 new kakao.maps.CustomOverlay({position:gymPos,content:lbl,yAnchor:2.6,map:map});
