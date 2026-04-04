@@ -226,7 +226,13 @@ document.getElementById('map').addEventListener('click',function(){document.getE
 
     const data = await response.json() as any;
 
+    const GYM_CATEGORIES = ['스포츠', '헬스', '피트니스', '체육', '수영', '요가', '필라테스', '크로스핏', 'pt', '격투', '무술', '권투', '복싱', '태권도', '클라이밍'];
+
     return (data.documents ?? [])
+      .filter((d: any) => {
+        const cat = (d.category_name ?? '').toLowerCase();
+        return GYM_CATEGORIES.some((kw) => cat.includes(kw));
+      })
       .map((d: any) => ({
         name: d.place_name,
         address: d.road_address_name || d.address_name,
