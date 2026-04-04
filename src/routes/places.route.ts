@@ -38,6 +38,53 @@ export async function placesRoutes(app: FastifyInstance) {
       .send(Buffer.from(buffer));
   });
 
+  // GET /map — 카카오맵 HTML 페이지 (WebView용, origin 인증 우회)
+  app.get('/map', async (request, reply) => {
+    const { gymLat, gymLng, gymName } = request.query as {
+      gymLat: string; gymLng: string; gymName?: string;
+    };
+    const name = (gymName ?? '내 헬스장').replace(/['"<>]/g, '');
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=ea5e3a3b4821d857665579e59aba0f7f"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body,#map{width:100%;height:100%}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+var map,myOverlay,circle;
+var gymPos=new kakao.maps.LatLng(${parseFloat(gymLat)},${parseFloat(gymLng)});
+map=new kakao.maps.Map(document.getElementById('map'),{center:gymPos,level:4});
+new kakao.maps.Marker({position:gymPos,map:map});
+var lbl='<div style="background:#fff;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;color:#333;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:4px">${name}</div>';
+new kakao.maps.CustomOverlay({position:gymPos,content:lbl,yAnchor:2.6,map:map});
+circle=new kakao.maps.Circle({center:gymPos,radius:300,strokeWeight:2,strokeColor:'#4f8ef7',strokeOpacity:.9,fillColor:'#4f8ef7',fillOpacity:.08,map:map});
+var dot='<div style="width:16px;height:16px;background:#30d158;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(48,209,88,.3)"></div>';
+myOverlay=new kakao.maps.CustomOverlay({content:dot,yAnchor:.5});
+function onMsg(e){
+  try{
+    var d=JSON.parse(e.data);
+    var p=new kakao.maps.LatLng(d.lat,d.lng);
+    myOverlay.setPosition(p);myOverlay.setMap(map);
+    var c=d.ok?'#30d158':'#ff453a';
+    circle.setOptions({strokeColor:c,fillColor:c});
+    map.panTo(p);
+  }catch(_){}
+}
+window.addEventListener('message',onMsg);
+document.addEventListener('message',onMsg);
+</script>
+</body>
+</html>`;
+    reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
+  });
+
   app.get('/places/search', async (request, reply) => {
     const { query, lat, lng } = request.query as { query: string; lat: string; lng: string };
 
