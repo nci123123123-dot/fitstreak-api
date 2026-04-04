@@ -1,6 +1,43 @@
 import { FastifyInstance } from 'fastify';
 
 export async function placesRoutes(app: FastifyInstance) {
+  // GET /places/staticmap — 카카오 Static Map 이미지 프록시
+  app.get('/places/staticmap', async (request, reply) => {
+    const { myLat, myLng, gymLat, gymLng, w, h } = request.query as {
+      myLat: string; myLng: string; gymLat: string; gymLng: string;
+      w?: string; h?: string;
+    };
+    if (!myLat || !myLng || !gymLat || !gymLng) {
+      return reply.code(400).send({ error: 'myLat, myLng, gymLat, gymLng required' });
+    }
+
+    const width  = Math.min(parseInt(w ?? '640'), 640);
+    const height = Math.min(parseInt(h ?? '300'), 400);
+
+    // 두 마커가 모두 보이도록 중심점 계산
+    const centerLat = (parseFloat(myLat) + parseFloat(gymLat)) / 2;
+    const centerLng = (parseFloat(myLng) + parseFloat(gymLng)) / 2;
+
+    const url = new URL('https://dapi.kakao.com/v2/maps/api/staticmap');
+    url.searchParams.set('center', `${centerLng},${centerLat}`);
+    url.searchParams.set('level',  '4');
+    url.searchParams.set('w',      String(width));
+    url.searchParams.set('h',      String(height));
+    // 헬스장 마커 (빨강)
+    url.searchParams.append('marker', `pos:${gymLng} ${gymLat}|color:red`);
+    // 내 위치 마커 (파랑)
+    url.searchParams.append('marker', `pos:${myLng} ${myLat}|color:blue`);
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: 'KakaoAK e60a761729c6b740847a06d43cd87687' },
+    });
+    const buffer = await res.arrayBuffer();
+    reply
+      .header('Content-Type', res.headers.get('content-type') ?? 'image/png')
+      .header('Cache-Control', 'no-store')
+      .send(Buffer.from(buffer));
+  });
+
   app.get('/places/search', async (request, reply) => {
     const { query, lat, lng } = request.query as { query: string; lat: string; lng: string };
 

@@ -409,7 +409,7 @@ export async function socialRoutes(
     const [users, streaks, todayLogs] = await Promise.all([
       prisma.user.findMany({
         where:  { id: { in: allIds } },
-        select: { id: true, displayName: true, profilePhoto: true },
+        select: { id: true, displayName: true, profilePhoto: true, splitConfig: true },
       }),
       prisma.streak.findMany({
         where:  { userId: { in: allIds } },
@@ -428,6 +428,15 @@ export async function socialRoutes(
     const ranking = users
       .map((u) => {
         const s = streakMap.get(u.id);
+        let todaySlotLabel: string | null = null;
+        if (u.splitConfig) {
+          try {
+            const cfg = JSON.parse(u.splitConfig) as { slots: { label: string }[]; currentSlotIndex: number };
+            if (cfg.slots.length > 0) {
+              todaySlotLabel = cfg.slots[cfg.currentSlotIndex % cfg.slots.length].label;
+            }
+          } catch { /* ignore malformed */ }
+        }
         return {
           id:             u.id,
           displayName:    u.displayName,
@@ -436,6 +445,7 @@ export async function socialRoutes(
           longestStreak:  s?.longestStreak ?? 0,
           workedOutToday: workedOutSet.has(u.id),
           isMe:           u.id === userId,
+          todaySlotLabel,
         };
       })
       .sort((a, b) => b.currentStreak - a.currentStreak);
