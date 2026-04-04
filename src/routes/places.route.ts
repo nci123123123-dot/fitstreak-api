@@ -87,6 +87,130 @@ document.addEventListener('message',onMsg);
     reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
   });
 
+  // GET /gym-picker — 헬스장 등록용 카카오맵 HTML 페이지
+  app.get('/gym-picker', async (request, reply) => {
+    const { initLat, initLng } = request.query as { initLat?: string; initLng?: string };
+    const lat = parseFloat(initLat ?? '37.5665');
+    const lng = parseFloat(initLng ?? '126.9780');
+    const hasInit = initLat && initLng;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=ea5e3a3b4821d857665579e59aba0f7f&libraries=services"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#111;font-family:-apple-system,sans-serif}
+#search-bar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;gap:6px;padding:10px 12px;background:rgba(10,10,10,.97);border-bottom:1px solid #222}
+#search-input{flex:1;background:#1c1c1e;border:1px solid #333;color:#fff;font-size:14px;padding:9px 12px;border-radius:10px;outline:none}
+#search-input::placeholder{color:#555}
+#search-btn{background:#4f8ef7;color:#fff;border:none;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap}
+#map{position:fixed;top:52px;left:0;right:0;bottom:72px}
+#results{position:fixed;top:52px;left:0;right:0;z-index:99;background:#111;border-bottom:1px solid #2a2a2a;max-height:240px;overflow-y:auto;display:none}
+.ri{padding:13px 16px;border-bottom:1px solid #1a1a1a;cursor:pointer}
+.ri:active{background:#1a1a1a}
+.rn{color:#fff;font-size:14px;font-weight:600}
+.ra{color:#636366;font-size:12px;margin-top:3px}
+#bottom-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,.97);padding:10px 16px;border-top:1px solid #222}
+#place-label{color:#8e8e93;font-size:12px;text-align:center;margin-bottom:6px;min-height:16px}
+#confirm-btn{width:100%;background:#4f8ef7;color:#fff;border:none;padding:14px;border-radius:13px;font-size:15px;font-weight:700}
+#confirm-btn:disabled{background:#2a2a2a;color:#3a3a3c}
+#my-pos-btn{position:fixed;bottom:84px;right:14px;z-index:100;width:42px;height:42px;background:#1c1c1e;border:1px solid #333;border-radius:21px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+</style>
+</head>
+<body>
+<div id="search-bar">
+  <input id="search-input" type="text" placeholder="헬스장 이름으로 검색"/>
+  <button id="search-btn" onclick="doSearch()">검색</button>
+</div>
+<div id="map"></div>
+<div id="results"></div>
+<button id="my-pos-btn" onclick="goMyPos()">📍</button>
+<div id="bottom-bar">
+  <div id="place-label">헬스장을 검색해서 선택하세요</div>
+  <button id="confirm-btn" disabled onclick="doConfirm()">이 위치로 등록</button>
+</div>
+<script>
+var map,marker,ps;
+var selLat=null,selLng=null,selName=null;
+var myLat=${lat},myLng=${lng};
+
+map=new kakao.maps.Map(document.getElementById('map'),{center:new kakao.maps.LatLng(${lat},${lng}),level:3});
+ps=new kakao.maps.services.Places();
+
+var zc=new kakao.maps.ZoomControl();
+map.addControl(zc,kakao.maps.ControlPosition.RIGHT);
+
+${hasInit ? `
+var initPos=new kakao.maps.LatLng(${lat},${lng});
+marker=new kakao.maps.Marker({position:initPos,map:map});
+selLat=${lat};selLng=${lng};selName='등록된 헬스장';
+document.getElementById('confirm-btn').disabled=false;
+document.getElementById('place-label').textContent='현재 등록된 위치';
+` : ''}
+
+function doSearch(){
+  var q=document.getElementById('search-input').value.trim();
+  if(!q)return;
+  var btn=document.getElementById('search-btn');
+  btn.textContent='...';btn.disabled=true;
+  var c=map.getCenter();
+  ps.keywordSearch(q,function(data,status){
+    btn.textContent='검색';btn.disabled=false;
+    if(status===kakao.maps.services.Status.OK){
+      showResults(data);
+    } else {
+      showResults([]);
+    }
+  },{location:c,radius:5000,size:15});
+}
+
+function showResults(data){
+  var el=document.getElementById('results');
+  if(!data.length){
+    el.innerHTML='<div class="ri"><div class="rn">검색 결과 없음</div></div>';
+  } else {
+    el.innerHTML=data.map(function(r){
+      return '<div class="ri" onclick="selectPlace('+r.y+','+r.x+',\\''+r.place_name.replace(/'/g,'')+'\\',\\''+( r.road_address_name||r.address_name||'').replace(/'/g,'')+'\\')">'+
+        '<div class="rn">'+r.place_name+'</div>'+
+        '<div class="ra">'+(r.road_address_name||r.address_name||r.category_name)+'</div></div>';
+    }).join('');
+  }
+  el.style.display='block';
+}
+
+function selectPlace(lat,lng,name,addr){
+  var pos=new kakao.maps.LatLng(lat,lng);
+  if(marker)marker.setMap(null);
+  marker=new kakao.maps.Marker({position:pos,map:map});
+  map.setCenter(pos);map.setLevel(3);
+  selLat=parseFloat(lat);selLng=parseFloat(lng);selName=name;
+  document.getElementById('confirm-btn').disabled=false;
+  document.getElementById('place-label').textContent='📍 '+name+(addr?' · '+addr:'');
+  document.getElementById('results').style.display='none';
+  document.getElementById('search-input').value=name;
+}
+
+function goMyPos(){
+  map.setCenter(new kakao.maps.LatLng(myLat,myLng));
+  map.setLevel(3);
+}
+
+function doConfirm(){
+  if(!selLat)return;
+  window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({lat:selLat,lng:selLng,name:selName||'내 헬스장'}));
+}
+
+document.getElementById('search-input').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
+document.getElementById('map').addEventListener('click',function(){document.getElementById('results').style.display='none';});
+</script>
+</body>
+</html>`;
+    reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
+  });
+
   app.get('/places/search', async (request, reply) => {
     const { query, lat, lng } = request.query as { query: string; lat: string; lng: string };
 
