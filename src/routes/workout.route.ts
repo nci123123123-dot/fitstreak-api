@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { StreakService } from '../services/streak.service';
 import { StreakError } from '../types/streak.types';
 import { getTodayInTimezone } from '../utils/date.util';
+import { advanceSplitSlot } from './split.route';
 
 export async function workoutRoutes(
   app: FastifyInstance,
@@ -43,6 +44,11 @@ export async function workoutRoutes(
           photoUrl:    req.body.photoUrl,
           gpsVerified: req.body.gpsVerified,
         });
+
+      // 새 기록일 때만 분할 슬롯 전진
+      if (!alreadyLoggedToday) {
+        await advanceSplitSlot(prisma, userId);
+      }
 
       return reply.code(alreadyLoggedToday ? 200 : 201).send({
         message:         alreadyLoggedToday ? 'Already logged today.' : 'Workout recorded!',

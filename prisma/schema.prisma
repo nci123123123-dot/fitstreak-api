@@ -19,6 +19,7 @@ model User {
   gymLng           Float?
   defaultVisibility String @default("friends") // public | friends | private
   profilePhoto     String? // base64 프로필 사진
+  splitConfig      String? // JSON: { slots: [{label}][], currentSlotIndex: number }
 
   workoutLogs   WorkoutLog[]
   streak        Streak?

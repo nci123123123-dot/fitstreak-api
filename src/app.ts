@@ -9,6 +9,7 @@ import { authRoutes }    from './routes/auth.route';
 import { workoutRoutes } from './routes/workout.route';
 import { socialRoutes }  from './routes/social.route';
 import { placesRoutes }  from './routes/places.route';
+import { splitRoutes }   from './routes/split.route';
 
 export async function buildApp() {
   const app = Fastify({
@@ -45,6 +46,7 @@ export async function buildApp() {
     await workoutRoutes(instance, { prisma, streakService });
     await socialRoutes(instance, { prisma });
     await placesRoutes(instance);
+    await splitRoutes(instance, { prisma });
   }));
 
   return app;
