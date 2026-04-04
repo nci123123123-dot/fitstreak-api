@@ -101,6 +101,39 @@ export async function splitRoutes(
 
     return reply.send({ config });
   });
+
+  // PATCH /users/me/split/slot — 수동으로 현재 슬롯 위치 변경
+  app.patch<{
+    Body: { slotIndex: number };
+  }>('/users/me/split/slot', {
+    onRequest: [app.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['slotIndex'],
+        properties: { slotIndex: { type: 'integer', minimum: 0 } },
+      },
+    },
+  }, async (req, reply) => {
+    const { userId } = req.user;
+    const { slotIndex } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { splitConfig: true },
+    });
+    if (!user?.splitConfig) return reply.code(404).send({ error: 'No split config.' });
+
+    const config: SplitConfig = JSON.parse(user.splitConfig);
+    config.currentSlotIndex = slotIndex % config.slots.length;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data:  { splitConfig: JSON.stringify(config) },
+    });
+
+    return reply.send({ config });
+  });
 }
 
 // 운동 기록 후 슬롯 자동 전진 (workout.route.ts에서 호출)
