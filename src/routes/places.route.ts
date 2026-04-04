@@ -87,37 +87,36 @@ document.addEventListener('message',onMsg);
     reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
   });
 
-  // GET /gym-picker — 헬스장 등록용 카카오맵 HTML 페이지
+  // GET /gym-picker — 헬스장 등록용 지도 HTML 페이지 (Leaflet + 카카오 Places 검색)
   app.get('/gym-picker', async (request, reply) => {
     const { initLat, initLng } = request.query as { initLat?: string; initLng?: string };
     const lat = parseFloat(initLat ?? '37.5665');
     const lng = parseFloat(initLng ?? '126.9780');
-    const hasInit = initLat && initLng;
+    const hasInit = !!(initLat && initLng);
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=ea5e3a3b4821d857665579e59aba0f7f&libraries=services"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;background:#111;font-family:-apple-system,sans-serif}
-#search-bar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;gap:6px;padding:10px 12px;background:rgba(10,10,10,.97);border-bottom:1px solid #222}
+html,body{width:100%;height:100%;font-family:-apple-system,sans-serif}
+#search-bar{position:fixed;top:0;left:0;right:0;z-index:1000;display:flex;gap:6px;padding:10px 12px;background:rgba(10,10,10,.97);border-bottom:1px solid #222}
 #search-input{flex:1;background:#1c1c1e;border:1px solid #333;color:#fff;font-size:14px;padding:9px 12px;border-radius:10px;outline:none}
 #search-input::placeholder{color:#555}
-#search-btn{background:#4f8ef7;color:#fff;border:none;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap}
+#search-btn{background:#4f8ef7;color:#fff;border:none;padding:9px 16px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}
 #map{position:fixed;top:52px;left:0;right:0;bottom:72px}
-#results{position:fixed;top:52px;left:0;right:0;z-index:99;background:#111;border-bottom:1px solid #2a2a2a;max-height:240px;overflow-y:auto;display:none}
-.ri{padding:13px 16px;border-bottom:1px solid #1a1a1a;cursor:pointer}
-.ri:active{background:#1a1a1a}
+#results{position:fixed;top:52px;left:0;right:0;z-index:999;background:#111;border-bottom:1px solid #222;max-height:250px;overflow-y:auto;display:none}
+.ri{padding:13px 16px;border-bottom:1px solid #1c1c1e;cursor:pointer;-webkit-tap-highlight-color:rgba(255,255,255,.05)}
 .rn{color:#fff;font-size:14px;font-weight:600}
 .ra{color:#636366;font-size:12px;margin-top:3px}
 #bottom-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,.97);padding:10px 16px;border-top:1px solid #222}
-#place-label{color:#8e8e93;font-size:12px;text-align:center;margin-bottom:6px;min-height:16px}
+#place-label{color:#8e8e93;font-size:12px;text-align:center;margin-bottom:7px;min-height:16px}
 #confirm-btn{width:100%;background:#4f8ef7;color:#fff;border:none;padding:14px;border-radius:13px;font-size:15px;font-weight:700}
 #confirm-btn:disabled{background:#2a2a2a;color:#3a3a3c}
-#my-pos-btn{position:fixed;bottom:84px;right:14px;z-index:100;width:42px;height:42px;background:#1c1c1e;border:1px solid #333;border-radius:21px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+#my-btn{position:fixed;bottom:86px;right:14px;z-index:1000;width:42px;height:42px;background:#1c1c1e;border:1px solid #333;border-radius:21px;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -127,28 +126,27 @@ html,body{width:100%;height:100%;background:#111;font-family:-apple-system,sans-
 </div>
 <div id="map"></div>
 <div id="results"></div>
-<button id="my-pos-btn" onclick="goMyPos()">📍</button>
+<button id="my-btn" onclick="goMyPos()">📍</button>
 <div id="bottom-bar">
   <div id="place-label">헬스장을 검색해서 선택하세요</div>
   <button id="confirm-btn" disabled onclick="doConfirm()">이 위치로 등록</button>
 </div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var map,marker,ps;
-var selLat=null,selLng=null,selName=null;
-var myLat=${lat},myLng=${lng};
+var myLat=${lat}, myLng=${lng};
+var selLat=null, selLng=null, selName=null;
+var marker=null;
 
-map=new kakao.maps.Map(document.getElementById('map'),{center:new kakao.maps.LatLng(${lat},${lng}),level:3});
-ps=new kakao.maps.services.Places();
+var map=L.map('map',{zoomControl:true}).setView([${lat},${lng}],17);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
 
-var zc=new kakao.maps.ZoomControl();
-map.addControl(zc,kakao.maps.ControlPosition.RIGHT);
+var gymIcon=L.divIcon({html:'<div style="font-size:30px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">🏋️</div>',iconSize:[32,32],iconAnchor:[16,32],className:''});
 
 ${hasInit ? `
-var initPos=new kakao.maps.LatLng(${lat},${lng});
-marker=new kakao.maps.Marker({position:initPos,map:map});
+marker=L.marker([${lat},${lng}],{icon:gymIcon}).addTo(map);
 selLat=${lat};selLng=${lng};selName='등록된 헬스장';
 document.getElementById('confirm-btn').disabled=false;
-document.getElementById('place-label').textContent='현재 등록된 위치';
+document.getElementById('place-label').textContent='현재 등록된 위치 · 검색으로 변경 가능';
 ` : ''}
 
 function doSearch(){
@@ -157,46 +155,41 @@ function doSearch(){
   var btn=document.getElementById('search-btn');
   btn.textContent='...';btn.disabled=true;
   var c=map.getCenter();
-  ps.keywordSearch(q,function(data,status){
-    btn.textContent='검색';btn.disabled=false;
-    if(status===kakao.maps.services.Status.OK){
-      showResults(data);
-    } else {
-      showResults([]);
-    }
-  },{location:c,radius:5000,size:15});
+  fetch('/places/search?query='+encodeURIComponent(q)+'&lat='+c.lat+'&lng='+c.lng)
+    .then(function(r){return r.json();})
+    .then(function(data){
+      btn.textContent='검색';btn.disabled=false;
+      showResults(Array.isArray(data)?data:[]);
+    })
+    .catch(function(){btn.textContent='검색';btn.disabled=false;showResults([]);});
 }
 
 function showResults(data){
   var el=document.getElementById('results');
   if(!data.length){
-    el.innerHTML='<div class="ri"><div class="rn">검색 결과 없음</div></div>';
+    el.innerHTML='<div class="ri"><div class="rn" style="color:#636366">검색 결과 없음</div></div>';
   } else {
-    el.innerHTML=data.map(function(r){
-      return '<div class="ri" onclick="selectPlace('+r.y+','+r.x+',\\''+r.place_name.replace(/'/g,'')+'\\',\\''+( r.road_address_name||r.address_name||'').replace(/'/g,'')+'\\')">'+
-        '<div class="rn">'+r.place_name+'</div>'+
-        '<div class="ra">'+(r.road_address_name||r.address_name||r.category_name)+'</div></div>';
+    el.innerHTML=data.map(function(r,i){
+      return '<div class="ri" onclick="pick('+i+')"><div class="rn">'+r.name+'</div><div class="ra">'+r.address+'</div></div>';
     }).join('');
   }
+  el._data=data;
   el.style.display='block';
 }
 
-function selectPlace(lat,lng,name,addr){
-  var pos=new kakao.maps.LatLng(lat,lng);
-  if(marker)marker.setMap(null);
-  marker=new kakao.maps.Marker({position:pos,map:map});
-  map.setCenter(pos);map.setLevel(3);
-  selLat=parseFloat(lat);selLng=parseFloat(lng);selName=name;
+function pick(i){
+  var r=document.getElementById('results')._data[i];
+  if(marker)map.removeLayer(marker);
+  marker=L.marker([r.lat,r.lng],{icon:gymIcon}).addTo(map);
+  map.setView([r.lat,r.lng],17);
+  selLat=r.lat;selLng=r.lng;selName=r.name;
   document.getElementById('confirm-btn').disabled=false;
-  document.getElementById('place-label').textContent='📍 '+name+(addr?' · '+addr:'');
+  document.getElementById('place-label').textContent='📍 '+r.name+' · '+r.address;
   document.getElementById('results').style.display='none';
-  document.getElementById('search-input').value=name;
+  document.getElementById('search-input').value=r.name;
 }
 
-function goMyPos(){
-  map.setCenter(new kakao.maps.LatLng(myLat,myLng));
-  map.setLevel(3);
-}
+function goMyPos(){map.setView([myLat,myLng],17);}
 
 function doConfirm(){
   if(!selLat)return;
