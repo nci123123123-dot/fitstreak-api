@@ -338,22 +338,51 @@ export async function socialRoutes(
     onRequest: [app.authenticate],
   }, async (req, reply) => {
     const { userId } = req.params;
+    const { userId: meId } = req.user;
 
-    const [user, streak, totalWorkouts, followerCount, followingCount] = await Promise.all([
+    const [user, streak, totalWorkouts, followerCount, followingCount, schedule, recentLogs, isFollowing] = await Promise.all([
       prisma.user.findUnique({
         where:  { id: userId },
-        select: { id: true, displayName: true, timezone: true, createdAt: true },
+        select: { id: true, displayName: true, profilePhoto: true, timezone: true, createdAt: true, splitConfig: true },
       }),
       prisma.streak.findUnique({ where: { userId } }),
       prisma.workoutLog.count({ where: { userId } }),
       prisma.follow.count({ where: { followeeId: userId } }),
       prisma.follow.count({ where: { followerId: userId } }),
+      prisma.workoutSchedule.findUnique({ where: { userId } }),
+      prisma.workoutLog.findMany({
+        where:   { userId },
+        orderBy: { localDate: 'desc' },
+        take:    6,
+        select:  { id: true, localDate: true, note: true, photoUrl: true, gpsVerified: true },
+      }),
+      prisma.follow.findUnique({ where: { followerId_followeeId: { followerId: meId, followeeId: userId } } }),
     ]);
 
     if (!user) return reply.code(404).send({ error: 'User not found.' });
 
+    // splitConfig 파싱
+    let splitSlots: { label: string }[] = [];
+    if (user.splitConfig) {
+      try {
+        const parsed = JSON.parse(user.splitConfig as string);
+        splitSlots = parsed.slots ?? [];
+      } catch {}
+    }
+
+    // 운동 요일 파싱
+    let daysOfWeek: number[] = [];
+    if (schedule?.daysOfWeek) {
+      try { daysOfWeek = JSON.parse(schedule.daysOfWeek); } catch {}
+    }
+
     return reply.send({
-      user,
+      user: {
+        id:           user.id,
+        displayName:  user.displayName,
+        profilePhoto: user.profilePhoto,
+        createdAt:    user.createdAt,
+      },
       stats: {
         currentStreak:  streak?.currentStreak ?? 0,
         longestStreak:  streak?.longestStreak ?? 0,
@@ -362,6 +391,10 @@ export async function socialRoutes(
         followerCount,
         followingCount,
       },
+      schedule:    { daysOfWeek },
+      splitSlots,
+      recentLogs,
+      isFollowing: !!isFollowing,
     });
   });
 
