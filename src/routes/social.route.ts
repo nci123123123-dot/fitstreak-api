@@ -424,11 +424,13 @@ export async function socialRoutes(
     return reply.code(201).send({ message: 'Push token registered.' });
   });
 
-  // GET /users/me/friends/ranking — 맞팔 친구 + 나 스트릭 랭킹
-  app.get('/users/me/friends/ranking', {
+  // GET /users/me/friends/ranking — 맞팔 친구 + 나 랭킹
+  // ?sort=streak(기본) | volume
+  app.get<{ Querystring: { sort?: string } }>('/users/me/friends/ranking', {
     onRequest: [app.authenticate],
   }, async (req, reply) => {
     const { userId } = req.user;
+    const sort = req.query.sort === 'volume' ? 'volume' : 'streak';
 
     const [myFollowing, myFollowers] = await Promise.all([
       prisma.follow.findMany({ where: { followerId: userId }, select: { followeeId: true } }),
@@ -439,7 +441,7 @@ export async function socialRoutes(
     const mutualIds    = [...followingSet].filter((id) => followerSet.has(id));
     const allIds       = [userId, ...mutualIds];
 
-    const [users, streaks, todayLogs] = await Promise.all([
+    const [users, streaks, todayLogs, volumeCounts] = await Promise.all([
       prisma.user.findMany({
         where:  { id: { in: allIds } },
         select: { id: true, displayName: true, profilePhoto: true, splitConfig: true },
@@ -448,15 +450,21 @@ export async function socialRoutes(
         where:  { userId: { in: allIds } },
         select: { userId: true, currentStreak: true, longestStreak: true, lastLogDate: true },
       }),
-      // KST 기준 오늘 날짜로 오늘 운동 여부 조회
       prisma.workoutLog.findMany({
         where:  { userId: { in: allIds }, localDate: getTodayInTimezone('Asia/Seoul') },
         select: { userId: true },
+      }),
+      // 전체 운동 횟수 (볼륨 기준)
+      prisma.workoutLog.groupBy({
+        by: ['userId'],
+        where: { userId: { in: allIds } },
+        _count: { id: true },
       }),
     ]);
 
     const streakMap     = new Map(streaks.map((s) => [s.userId, s]));
     const workedOutSet  = new Set(todayLogs.map((l) => l.userId));
+    const volumeMap     = new Map(volumeCounts.map((v) => [v.userId, v._count.id]));
 
     const ranking = users
       .map((u) => {
@@ -476,12 +484,17 @@ export async function socialRoutes(
           profilePhoto:   u.profilePhoto,
           currentStreak:  s?.currentStreak ?? 0,
           longestStreak:  s?.longestStreak ?? 0,
+          totalWorkouts:  volumeMap.get(u.id) ?? 0,
           workedOutToday: workedOutSet.has(u.id),
           isMe:           u.id === userId,
           todaySlotLabel,
         };
       })
-      .sort((a, b) => b.currentStreak - a.currentStreak);
+      .sort((a, b) =>
+        sort === 'volume'
+          ? b.totalWorkouts - a.totalWorkouts
+          : b.currentStreak - a.currentStreak
+      );
 
     return reply.send({ ranking });
   });
